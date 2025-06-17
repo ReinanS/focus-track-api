@@ -6,9 +6,12 @@ authors = [
     {name = "Reinan", email = "reinandesouza01@gmail.com"}
 ]
 readme = "README.md"
-requires-python = ">=3.13,<4.0"  # Faixa ajustada para evitar conflitos com dependências
+requires-python = ">=3.12,<4.0"  # Faixa ajustada para evitar conflitos com dependências
 dependencies = [
-    "fastapi[standard] (>=0.115.6,<0.116.0)"
+    "fastapi[standard] (>=0.115.6,<0.116.0)",
+    "opencv-python[standard] (>=4.10.0.84,<5.0.0.0)",
+    "numpy (>=1.26,<2.0)",
+    "mediapipe[standart] (>=0.10.20,<0.11.0)",
 ]
 
 [tool.poetry.dev-dependencies]
