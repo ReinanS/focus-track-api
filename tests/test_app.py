@@ -1,4 +1,5 @@
 from http import HTTPStatus
+
 from tests.conftest import client
 
 
@@ -38,6 +39,8 @@ def test_read_users(client):
             }
         ]
     }
+
+
 def test_update_user(client):
     response = client.put(
         '/users/1',
@@ -53,6 +56,8 @@ def test_update_user(client):
         'email': 'bob@example.com',
         'id': 1,
     }
+
+
 def test_delete_user(client):
     response = client.delete('/users/1')
 

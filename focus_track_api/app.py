@@ -1,4 +1,5 @@
 from http import HTTPStatus
+
 from fastapi import FastAPI
 
 from focus_track_api.routers import attention, users

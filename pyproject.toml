@@ -12,6 +12,9 @@ dependencies = [
     "opencv-python[standard] (>=4.10.0.84,<5.0.0.0)",
     "numpy (>=1.26,<2.0)",
     "mediapipe[standart] (>=0.10.20,<0.11.0)",
+    "pydantic-settings (>=2.10.1,<3.0.0)",
+    "sqlalchemy (>=2.0.41,<3.0.0)",
+    "alembic (>=1.16.3,<2.0.0)",
 ]
 
 [tool.poetry.dev-dependencies]
