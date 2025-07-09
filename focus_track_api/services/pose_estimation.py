@@ -1,11 +1,15 @@
 import cv2
 import numpy as np
-from focus_track_api.services.face_geometry import PCF, get_metric_landmarks, procrustes_landmark_basis
+
+from focus_track_api.services.face_geometry import (
+    FaceGeometry,
+    get_metric_landmarks,
+    procrustes_landmark_basis,
+)
 from focus_track_api.utils.utils import rot_mat_to_euler
 
 
 class HeadPoseEstimator:
-
     def __init__(self):
         """
         Class for estimating the head pose using the image/frame, face mesh landmarks, and camera parameters.
@@ -56,8 +60,9 @@ class HeadPoseEstimator:
     @staticmethod
     def _get_model_lms_ids():
         JAW_LMS_NUMS = [61, 291, 199]
-        model_lms_ids = JAW_LMS_NUMS + \
-            [key for key, _ in procrustes_landmark_basis]
+        model_lms_ids = JAW_LMS_NUMS + [
+            key for key, _ in procrustes_landmark_basis
+        ]
         model_lms_ids.sort()
 
         return model_lms_ids
@@ -123,8 +128,10 @@ class HeadPoseEstimator:
                 tvec,
             )
 
-            rvec1 = np.array(
-                [rvec[2, 0], rvec[0, 0], rvec[1, 0]]).reshape((3, 1))
+            rvec1 = np.array([rvec[2, 0], rvec[0, 0], rvec[1, 0]]).reshape((
+                3,
+                1,
+            ))
 
             # cv2.Rodrigues: convert a rotation vector to a rotation matrix (also known as a Rodrigues rotation matrix)
             rmat, _ = cv2.Rodrigues(rvec1)
@@ -151,7 +158,11 @@ class HeadPoseEstimator:
 
     def _draw_nose_axes(self, frame, rvec, tvec, model_img_lms):
         (nose_axes_point2D, _) = cv2.projectPoints(
-            self.NOSE_AXES_POINTS, rvec, tvec, self.camera_matrix, self.dist_coeffs
+            self.NOSE_AXES_POINTS,
+            rvec,
+            tvec,
+            self.camera_matrix,
+            self.dist_coeffs,
         )
         nose = tuple(model_img_lms[0, :2].astype(int))
 
@@ -175,7 +186,7 @@ class HeadPoseEstimator:
                     [0, focal_length, fr_center[1]],
                     [0, 0, 1],
                 ],
-                dtype="double",
+                dtype='double',
             )
             self.focal_length = focal_length
         else:
@@ -183,7 +194,8 @@ class HeadPoseEstimator:
         if self.dist_coeffs is None:
             self.dist_coeffs = np.zeros((5, 1))
 
-        self.pcf = PCF(frame_height=fr_h, frame_width=fr_w,
-                       fy=self.focal_length)
+        self.pcf = FaceGeometry(
+            frame_height=fr_h, frame_width=fr_w, fy=self.focal_length
+        )
 
         self.pcf_calculated = True

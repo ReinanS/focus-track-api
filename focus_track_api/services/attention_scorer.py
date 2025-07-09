@@ -1,6 +1,3 @@
-import time
-
-
 class AttentionScorer:
     """
     Attention Scorer class that contains methods for estimating EAR, Gaze_Score, PERCLOS and Head Pose over time,
@@ -207,9 +204,9 @@ class AttentionScorer:
 
         if self.verbose:  # print additional info if verbose is True
             print(
-                f"eye closed:{asleep}\tlooking away:{looking_away}\tdistracted:{distracted}"
+                f'eye closed:{asleep}\tlooking away:{looking_away}\tdistracted:{distracted}'
             )
-            
+
         return asleep, looking_away, distracted
 
     def get_PERCLOS(self, t_now, fps, ear_score):
@@ -239,7 +236,9 @@ class AttentionScorer:
         delta = t_now - self.prev_time  # set delta timer
         tired = False  # set default value for the tired state of the driver
 
-        all_frames_numbers_in_perclos_duration = int(self.PERCLOS_TIME_PERIOD * fps)
+        all_frames_numbers_in_perclos_duration = int(
+            self.PERCLOS_TIME_PERIOD * fps
+        )
 
         # if the ear_score is lower or equal than the threshold, increase the eye_closure_counter
         if (ear_score is not None) and (ear_score <= self.ear_thresh):

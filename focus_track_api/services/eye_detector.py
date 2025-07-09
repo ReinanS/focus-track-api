@@ -1,7 +1,6 @@
 import cv2
 import numpy as np
 from numpy import linalg as LA
-from focus_track_api.utils.utils import resize
 
 EYES_LMS_NUMS = [33, 133, 160, 144, 158, 153, 362, 263, 385, 380, 387, 373]
 LEFT_IRIS_NUM = 468
@@ -9,7 +8,6 @@ RIGHT_IRIS_NUM = 473
 
 
 class EyeDetector:
-
     def __init__(self):
         """
         Eye dector class that contains various method for eye aperture rate estimation and gaze score estimation
@@ -70,7 +68,6 @@ class EyeDetector:
             x = int(landmarks[n, 0] * frame_size[0])
             y = int(landmarks[n, 1] * frame_size[1])
             cv2.circle(color_frame, (x, y), 1, (0, 0, 255), -1)
-        return
 
     def get_EAR(self, landmarks):
         """
@@ -113,7 +110,9 @@ class EyeDetector:
         return ear_avg
 
     @staticmethod
-    def _calc_1eye_score(landmarks, eye_lms_nums, eye_iris_num, frame_size, frame):
+    def _calc_1eye_score(
+        landmarks, eye_lms_nums, eye_iris_num, frame_size, frame
+    ):
         """Gets each eye score and its picture."""
         iris = landmarks[eye_iris_num, :2]
 
@@ -122,9 +121,10 @@ class EyeDetector:
         eye_x_max = landmarks[eye_lms_nums, 0].max()
         eye_y_max = landmarks[eye_lms_nums, 1].max()
 
-        eye_center = np.array(
-            ((eye_x_min + eye_x_max) / 2, (eye_y_min + eye_y_max) / 2)
-        )
+        eye_center = np.array((
+            (eye_x_min + eye_x_max) / 2,
+            (eye_y_min + eye_y_max) / 2,
+        ))
 
         eye_gaze_score = LA.norm(iris - eye_center) / eye_center[0]
 
@@ -133,8 +133,9 @@ class EyeDetector:
         eye_x_max_frame = int(eye_x_max * frame_size[0])
         eye_y_max_frame = int(eye_y_max * frame_size[1])
 
-        eye = frame[eye_y_min_frame:eye_y_max_frame,
-                    eye_x_min_frame:eye_x_max_frame]
+        eye = frame[
+            eye_y_min_frame:eye_y_max_frame, eye_x_min_frame:eye_x_max_frame
+        ]
 
         return eye_gaze_score, eye
 

@@ -6,17 +6,17 @@ import numpy as np
 
 def load_camera_parameters(file_path):
     try:
-        with open(file_path, "r") as file:
-            if file_path.endswith(".json"):
+        with open(file_path, 'r') as file:
+            if file_path.endswith('.json'):
                 data = json.load(file)
             else:
-                raise ValueError("Unsupported file format. Use JSON or YAML.")
+                raise ValueError('Unsupported file format. Use JSON or YAML.')
             return (
-                np.array(data["camera_matrix"], dtype="double"),
-                np.array(data["dist_coeffs"], dtype="double"),
+                np.array(data['camera_matrix'], dtype='double'),
+                np.array(data['dist_coeffs'], dtype='double'),
             )
     except Exception as e:
-        print(f"Failed to load camera parameters: {e}")
+        print(f'Failed to load camera parameters: {e}')
         return None, None
 
 
@@ -40,7 +40,9 @@ def resize(frame, scale_percent):
 def get_landmarks(lms):
     surface = 0
     for lms0 in lms:
-        landmarks = [np.array([point.x, point.y, point.z]) for point in lms0.landmark]
+        landmarks = [
+            np.array([point.x, point.y, point.z]) for point in lms0.landmark
+        ]
 
         landmarks = np.array(landmarks)
 
@@ -96,7 +98,7 @@ def midpoint(p1, p2):
     return np.array([int((p1.x + p2.x) / 2), int((p1.y + p2.y) / 2)])
 
 
-def get_array_keypoints(landmarks, dtype="int", verbose: bool = False):
+def get_array_keypoints(landmarks, dtype='int', verbose: bool = False):
     """
     Converts all the iterable dlib 68 face keypoint in a numpy array of shape 68,2
 
@@ -168,7 +170,9 @@ def rot_mat_to_euler(rmat):
         print("Isn't rotation matrix")
 
 
-def draw_pose_info(frame, img_point, point_proj, roll=None, pitch=None, yaw=None):
+def draw_pose_info(
+    frame, img_point, point_proj, roll=None, pitch=None, yaw=None
+):
     """
     Draw 3d orthogonal axis given a frame, a point in the frame, the projection point array.
     Also prints the information about the roll, pitch and yaw if passed
@@ -185,19 +189,31 @@ def draw_pose_info(frame, img_point, point_proj, roll=None, pitch=None, yaw=None
         Frame with 3d axis drawn and, optionally, the roll,pitch and yaw values drawn
     """
     frame = cv2.line(
-        frame, img_point, tuple(point_proj[0].ravel().astype(int)), (255, 0, 0), 3
+        frame,
+        img_point,
+        tuple(point_proj[0].ravel().astype(int)),
+        (255, 0, 0),
+        3,
     )
     frame = cv2.line(
-        frame, img_point, tuple(point_proj[1].ravel().astype(int)), (0, 255, 0), 3
+        frame,
+        img_point,
+        tuple(point_proj[1].ravel().astype(int)),
+        (0, 255, 0),
+        3,
     )
     frame = cv2.line(
-        frame, img_point, tuple(point_proj[2].ravel().astype(int)), (0, 0, 255), 3
+        frame,
+        img_point,
+        tuple(point_proj[2].ravel().astype(int)),
+        (0, 0, 255),
+        3,
     )
 
     if roll is not None and pitch is not None and yaw is not None:
         cv2.putText(
             frame,
-            "Roll:" + str(round(roll, 0)),
+            'Roll:' + str(round(roll, 0)),
             (500, 50),
             cv2.FONT_HERSHEY_PLAIN,
             1,
@@ -207,7 +223,7 @@ def draw_pose_info(frame, img_point, point_proj, roll=None, pitch=None, yaw=None
         )
         cv2.putText(
             frame,
-            "Pitch:" + str(round(pitch, 0)),
+            'Pitch:' + str(round(pitch, 0)),
             (500, 70),
             cv2.FONT_HERSHEY_PLAIN,
             1,
@@ -217,7 +233,7 @@ def draw_pose_info(frame, img_point, point_proj, roll=None, pitch=None, yaw=None
         )
         cv2.putText(
             frame,
-            "Yaw:" + str(round(yaw, 0)),
+            'Yaw:' + str(round(yaw, 0)),
             (500, 90),
             cv2.FONT_HERSHEY_PLAIN,
             1,
