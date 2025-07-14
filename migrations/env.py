@@ -5,7 +5,7 @@ from sqlalchemy import pool
 
 from alembic import context
 
-from focus_track_api.model import table_registry
+from focus_track_api.models import table_registry
 from focus_track_api.settings import Settings
 
 # this is the Alembic Config object, which provides

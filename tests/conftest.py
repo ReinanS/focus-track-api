@@ -1,41 +1,120 @@
 from contextlib import contextmanager
-import datetime
+from datetime import datetime
+
+import factory
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, event
+from sqlalchemy import event
+from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
+from testcontainers.postgres import PostgresContainer
 
-from focus_track_api import app
-from focus_track_api.model import table_registry
+from focus_track_api.app import app
+from focus_track_api.database import get_session
+from focus_track_api.models import User, table_registry
+from focus_track_api.security import get_password_hash
+from focus_track_api.settings import Settings
 
 
 @pytest.fixture
-def client():
-    return TestClient(app)
+def client(session):
+    def get_session_override():
+        return session
+
+    with TestClient(app) as client:
+        app.dependency_overrides[get_session] = get_session_override
+        yield client
+
+    app.dependency_overrides.clear()
 
 
-@pytest.fixture
-def session():
-    engine = create_engine('sqlite:///:memory:')
-    table_registry.metadata.create_all(engine)
+@pytest.fixture(scope='session')
+def engine():
+    # Caso do windows + Docker no CI
+    import sys  # noqa: PLC0415
 
-    with pytest.Session(engine) as session:
+    if sys.platform == 'win32':
+        yield create_async_engine(Settings().DATABASE_URL)
+
+    else:
+        with PostgresContainer('postgres:16', driver='psycopg') as postgres:
+            _engine = create_async_engine(postgres.get_connection_url())
+            yield _engine
+
+
+@pytest_asyncio.fixture
+async def session(engine):
+    async with engine.begin() as conn:
+        await conn.run_sync(table_registry.metadata.create_all)
+
+    async with AsyncSession(engine, expire_on_commit=False) as session:
         yield session
 
-    table_registry.metadata.drop_all(engine)
+    async with engine.begin() as conn:
+        await conn.run_sync(table_registry.metadata.drop_all)
+
+
+@contextmanager
+def _mock_db_time(*, model, time=datetime(2024, 1, 1)):
+    def fake_time_handler(mapper, connection, target):
+        if hasattr(target, 'created_at'):
+            target.created_at = time
+        if hasattr(target, 'updated_at'):
+            target.updated_at = time
+
+    event.listen(model, 'before_insert', fake_time_handler)
+
+    yield time
+
+    event.remove(model, 'before_insert', fake_time_handler)
+
 
 @pytest.fixture
 def mock_db_time():
     return _mock_db_time
 
-@contextmanager 
-def _mock_db_time(*, model, time=datetime(2024, 1, 1)): 
 
-    def fake_time_hook(mapper, connection, target): 
-        if hasattr(target, 'created_at'):
-            target.created_at = time
+@pytest_asyncio.fixture
+async def user(session):
+    password = 'testtest'
+    user = UserFactory(password=get_password_hash(password))
 
-    event.listen(model, 'before_insert', fake_time_hook) 
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
 
-    yield time 
+    user.clean_password = password
 
-    event.remove(model, 'before_insert', fake_time_hook) 
+    return user
+
+
+@pytest_asyncio.fixture
+async def other_user(session):
+    password = 'testtest'
+    user = UserFactory(password=get_password_hash(password))
+
+    session.add(user)
+    await session.commit()
+    await session.refresh(user)
+
+    user.clean_password = password
+
+    return user
+
+
+@pytest.fixture
+def token(client, user):
+    response = client.post(
+        '/auth/token',
+        data={'username': user.email, 'password': user.clean_password},
+    )
+    return response.json()['access_token']
+
+
+class UserFactory(factory.Factory):
+    class Meta:
+        model = User
+
+    username = factory.Sequence(lambda n: f'test{n}')
+    email = factory.LazyAttribute(lambda obj: f'{obj.username}@test.com')
+    password = factory.LazyAttribute(lambda obj: f'{obj.username}@example.com')

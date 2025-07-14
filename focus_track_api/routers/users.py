@@ -1,55 +1,117 @@
 from http import HTTPStatus
+from typing import Annotated
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
+from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from focus_track_api.database import get_session
+from focus_track_api.models import User
 from focus_track_api.schemas import (
+    FilterPage,
     Message,
-    UserDB,
     UserList,
     UserPublic,
     UserSchema,
 )
-
-router = APIRouter(
-    prefix='/users',
-    tags=['users'],
-    responses={HTTPStatus.NOT_FOUND: {'description': 'Not found'}},
+from focus_track_api.security import (
+    get_current_user,
+    get_password_hash,
 )
 
-database = []
+router = APIRouter(prefix='/users', tags=['users'])
+Session = Annotated[AsyncSession, Depends(get_session)]
+CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
 @router.post('/', status_code=HTTPStatus.CREATED, response_model=UserPublic)
-def create_user(user: UserSchema):
-    user_with_id = UserDB(**user.model_dump(), id=len(database) + 1)
-    database.append(user_with_id)
+async def create_user(user: UserSchema, session: Session):
+    db_user = await session.scalar(
+        select(User).where(
+            (User.username == user.username) | (User.email == user.email)
+        )
+    )
 
-    return user_with_id
+    if db_user:
+        if db_user.username == user.username:
+            raise HTTPException(
+                status_code=HTTPStatus.CONFLICT,
+                detail='Username already exists',
+            )
+        elif db_user.email == user.email:
+            raise HTTPException(
+                status_code=HTTPStatus.CONFLICT,
+                detail='Email already exists',
+            )
+
+    hashed_password = get_password_hash(user.password)
+
+    db_user = User(
+        email=user.email,
+        username=user.username,
+        password=hashed_password,
+    )
+
+    session.add(db_user)
+    await session.commit()
+    await session.refresh(db_user)
+
+    return db_user
 
 
 @router.get('/', response_model=UserList)
-def read_users():
-    return {'users': database}
+async def read_users(
+    session: Session, filter_users: Annotated[FilterPage, Query()]
+):
+    query = await session.scalars(
+        select(User).offset(filter_users.offset).limit(filter_users.limit)
+    )
+
+    users = query.all()
+
+    return {'users': users}
 
 
 @router.put('/{user_id}', response_model=UserPublic)
-def update_user(user_id: int, user: UserSchema):
-    if user_id > len(database) or user_id < 1:
+async def update_user(
+    user_id: int,
+    user: UserSchema,
+    session: Session,
+    current_user: CurrentUser,
+):
+    if current_user.id != user_id:
         raise HTTPException(
-            status_code=HTTPStatus.NOT_FOUND, detail='User not found'
+            status_code=HTTPStatus.FORBIDDEN, detail='Not enough permissions'
         )
+    try:
+        current_user.username = user.username
+        current_user.password = get_password_hash(user.password)
+        current_user.email = user.email
+        await session.commit()
+        await session.refresh(current_user)
 
-    user_with_id = UserDB(**user.model_dump(), id=user_id)
-    database[user_id - 1] = user_with_id
-    return user_with_id
+        return current_user
+
+    except IntegrityError:
+        raise HTTPException(
+            status_code=HTTPStatus.CONFLICT,
+            detail='Username or Email already exists',
+        )
 
 
 @router.delete('/{user_id}', response_model=Message)
-def delete_user(user_id: int):
-    if user_id > len(database) or user_id < 1:
+async def delete_user(
+    user_id: int,
+    session: Session,
+    current_user: CurrentUser,
+):
+    if current_user.id != user_id:
         raise HTTPException(
-            status_code=HTTPStatus.NOT_FOUND, detail='User not found'
+            status_code=HTTPStatus.FORBIDDEN, detail='Not enough permissions'
         )
 
-    del database[user_id - 1]
+    await session.delete(current_user)
+    await session.commit()
+
     return {'message': 'User deleted'}

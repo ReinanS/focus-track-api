@@ -2703,8 +2703,8 @@ def project_xy(landmarks, pcf):
 
     landmarks[1, :] = 1.0 - landmarks[1, :]
 
-    landmarks = landmarks * np.array([[x_scale, y_scale, x_scale]]).T
-    landmarks = landmarks + np.array([[x_translation, y_translation, 0]]).T
+    landmarks *= np.array([[x_scale, y_scale, x_scale]]).T
+    landmarks += np.array([[x_translation, y_translation, 0]]).T
 
     return landmarks
 
@@ -2960,7 +2960,8 @@ def compute_optimal_rotation(design_matrix):
     rotation: Optimal rotation as a np.ndarray.
 
     """
-    if np.linalg.norm(design_matrix) < 1e-9:
+    TOLERANCE = 1e-9
+    if np.linalg.norm(design_matrix) < TOLERANCE:
         print('Design matrix norm is too small!')
 
     u, _, vh = np.linalg.svd(design_matrix, full_matrices=True)
@@ -3010,6 +3011,8 @@ def compute_optimal_scale(
     result: Combination of rotation and scaling with translation matrixes as a np.ndarray.
 
     """
+    TOLERANCE = 1e-9
+
     rotated_centered_weighted_sources = np.matmul(
         rotation, centered_weighted_sources
     )
@@ -3017,9 +3020,9 @@ def compute_optimal_scale(
     numerator = np.sum(rotated_centered_weighted_sources * weighted_targets)
     denominator = np.sum(centered_weighted_sources * weighted_sources)
 
-    if denominator < 1e-9:
+    if denominator < TOLERANCE:
         print('Scale expression denominator is too small!')
-    if numerator / denominator < 1e-9:
+    if numerator / denominator < TOLERANCE:
         print('Scale is too small!')
 
     return numerator / denominator

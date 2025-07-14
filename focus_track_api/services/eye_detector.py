@@ -1,4 +1,3 @@
-import cv2
 import numpy as np
 from numpy import linalg as LA
 
@@ -36,38 +35,6 @@ class EyeDetector:
         divided by the eye lenght
         """
         return ear_eye
-
-    def show_eye_keypoints(self, color_frame, landmarks, frame_size):
-        """
-        Shows eyes keypoints found in the face, drawing red circles in their position in the frame/image
-
-        Parameters
-        ----------
-        color_frame: numpy array
-            Frame/image in which the eyes keypoints are found
-        landmarks: landmarks: numpy array
-            List of 478 mediapipe keypoints of the face
-        """
-
-        cv2.circle(
-            color_frame,
-            (landmarks[LEFT_IRIS_NUM, :2] * frame_size).astype(np.uint32),
-            3,
-            (255, 255, 255),
-            cv2.FILLED,
-        )
-        cv2.circle(
-            color_frame,
-            (landmarks[RIGHT_IRIS_NUM, :2] * frame_size).astype(np.uint32),
-            3,
-            (255, 255, 255),
-            cv2.FILLED,
-        )
-
-        for n in EYES_LMS_NUMS:
-            x = int(landmarks[n, 0] * frame_size[0])
-            y = int(landmarks[n, 1] * frame_size[1])
-            cv2.circle(color_frame, (x, y), 1, (0, 0, 255), -1)
 
     def get_EAR(self, landmarks):
         """
@@ -160,10 +127,10 @@ class EyeDetector:
 
         """
 
-        left_gaze_score, left_eye = self._calc_1eye_score(
+        left_gaze_score, _left_eye = self._calc_1eye_score(
             landmarks, EYES_LMS_NUMS[:6], LEFT_IRIS_NUM, frame_size, frame
         )
-        right_gaze_score, right_eye = self._calc_1eye_score(
+        right_gaze_score, _right_eye = self._calc_1eye_score(
             landmarks, EYES_LMS_NUMS[6:], RIGHT_IRIS_NUM, frame_size, frame
         )
 

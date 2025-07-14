@@ -24,9 +24,10 @@ async def monitor(websocket: WebSocket):
         if not cv2.useOptimized():
             try:
                 cv2.setUseOptimized(True)  # set OpenCV optimization to True
-            except:
+            except Exception as ex:
                 print(
-                    'OpenCV optimization could not be set to True, the script may be slower than expected'
+                    'OpenCV optimization could not be set to True, the script may be slower than expected',
+                    ex,
                 )
 
         face_mesh_instance = face_mesh()

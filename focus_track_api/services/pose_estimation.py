@@ -110,7 +110,7 @@ class HeadPoseEstimator:
             flags=cv2.SOLVEPNP_ITERATIVE,
         )
         """
-        The OpenCV Solve PnP method computes the rotation and translation vectors with respect to the camera coordinate 
+        The OpenCV Solve PnP method computes the rotation and translation vectors with respect to the camera coordinate
         system of the image_points referred to the 3d head model_points. It takes into account the camera matrix and
         the distortion coefficients.
         The method used is iterative (cv2.SOLVEPNP_ITERATIVE)
@@ -141,10 +141,10 @@ class HeadPoseEstimator:
             """
             We use the rotationMatrixToEulerAngles function to compute the euler angles (roll, pitch, yaw) from the
             Rotation Matrix. This function also checks if we have a gymbal lock.
-            The angles are converted from radians to degrees 
-            
+            The angles are converted from radians to degrees
+
             An alternative method to compute the euler angles is the following:
-        
+
             P = np.hstack((Rmat,tvec)) -> computing the projection matrix
             euler_angles = -cv2.decomposeProjectionMatrix(P)[6] -> extracting euler angles for yaw pitch and roll from the projection matrix
             """

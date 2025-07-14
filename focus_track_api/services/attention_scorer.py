@@ -96,116 +96,62 @@ class AttentionScorer:
         """
         Evaluate the driver's state of attention based on the given scores and thresholds.
 
-        Parameters
-        ----------
-        t_now: float or int
-            The current time in seconds.
-
-        ear_score: float
-            EAR (Eye Aspect Ratio) score obtained from the driver eye aperture.
-
-        gaze_score: float
-            Gaze Score obtained from the driver eye gaze.
-
-        head_roll: float
-            Roll angle obtained from the driver head pose.
-
-        head_pitch: float
-            Pitch angle obtained from the driver head pose.
-
-        head_yaw: float
-            Yaw angle obtained from the driver head pose.
-
         Returns
         -------
         asleep: bool
             Indicates if the driver is asleep or not.
-
         looking_away: bool
             Indicates if the driver is looking away or not.
-
         distracted: bool
             Indicates if the driver is distracted or not.
         """
-        # instantiating state of attention variables
-        asleep = False
-        looking_away = False
-        distracted = False
 
-        if (
-            self.closure_time >= self.ear_time_thresh
-        ):  # check if the ear cumulative counter surpassed the threshold
-            asleep = True
+        # Sub-funções internas para clareza
+        def is_eye_closed(score):
+            return score is not None and score <= self.ear_thresh
 
-        if (
-            self.not_look_ahead_time >= self.gaze_time_thresh
-        ):  # check if the gaze cumulative counter surpassed the threshold
-            looking_away = True
+        def is_looking_away(score):
+            return score is not None and score > self.gaze_thresh
 
-        if (
-            self.distracted_time >= self.pose_time_thresh
-        ):  # check if the pose cumulative counter surpassed the threshold
-            distracted = True
+        def is_pose_distracted(roll, pitch, yaw):
+            return any([
+                roll is not None and abs(roll) > self.roll_thresh,
+                pitch is not None and abs(pitch) > self.pitch_thresh,
+                yaw is not None and abs(yaw) > self.yaw_thresh,
+            ])
 
-        """
-        The 3 if blocks that follow are written in a way that when we have a score that's over it's value threshold, 
-        a respective score counter (ear counter, gaze counter, pose counter) is increased and can reach a given maximum 
-        over time.
-        When a score doesn't surpass a threshold, it is diminished and can go to a minimum of zero.
-        
-        Example:
-        
-        If the ear score of the eye of the driver surpasses the threshold for a SINGLE frame, the ear_counter is increased.
-        If the ear score of the eye is surpassed for multiple frames, the ear_counter will be increased and will reach 
-        a given maximum, then it won't increase but the "asleep" variable will be set to True.
-        When the ear_score doesn't surpass the threshold, the ear_counter is decreased. If there are multiple frame
-        where the score doesn't surpass the threshold, the ear_counter can reach the minimum of zero
-        
-        This way, we have a cumulative score for each of the controlled features (EAR, GAZE and HEAD POSE).
-        If high score it's reached for a cumulative counter, this function will retain its value and will need a
-        bit of "cool-down time" to reach zero again 
-        """
-        if (ear_score is not None) and (ear_score <= self.ear_thresh):
+        def is_pose_attentive(roll, pitch, yaw):
+            if None in {roll, pitch, yaw}:
+                return True
+            return all([
+                abs(roll) <= self.roll_thresh,
+                abs(pitch) <= self.pitch_thresh,
+                abs(yaw) <= self.yaw_thresh,
+            ])
+
+        # Atualiza timers e contadores
+        if is_eye_closed(ear_score):
             self.closure_time = t_now - self.last_time_eye_opened
-        elif ear_score is None or (
-            ear_score is not None and ear_score > self.ear_thresh
-        ):
+        else:
             self.last_time_eye_opened = t_now
             self.closure_time = 0.0
 
-        if (gaze_score is not None) and (gaze_score > self.gaze_thresh):
+        if is_looking_away(gaze_score):
             self.not_look_ahead_time = t_now - self.last_time_looked_ahead
-            # print("not_look_ahead_time:", {self.not_look_ahead_time})
-            # print("gaze_time_thresh:",{self.gaze_time_thresh})
-        elif gaze_score is None or (
-            gaze_score is not None and gaze_score <= self.gaze_thresh
-        ):
+        else:
             self.last_time_looked_ahead = t_now
             self.not_look_ahead_time = 0.0
 
-        if (
-            (head_roll is not None and abs(head_roll) > self.roll_thresh)
-            or (head_pitch is not None and abs(head_pitch) > self.pitch_thresh)
-            or (head_yaw is not None and abs(head_yaw) > self.yaw_thresh)
-        ):
+        if is_pose_distracted(head_roll, head_pitch, head_yaw):
             self.distracted_time = t_now - self.last_time_attended
-        elif (
-            head_roll is None
-            or head_pitch is None
-            or head_yaw is None
-            or (
-                (abs(head_roll) <= self.roll_thresh)
-                and (abs(head_pitch) <= self.pitch_thresh)
-                and (abs(head_yaw) <= self.yaw_thresh)
-            )
-        ):
+        elif is_pose_attentive(head_roll, head_pitch, head_yaw):
             self.last_time_attended = t_now
             self.distracted_time = 0.0
 
-        if self.verbose:  # print additional info if verbose is True
-            print(
-                f'eye closed:{asleep}\tlooking away:{looking_away}\tdistracted:{distracted}'
-            )
+        # Avalia o estado com base nos thresholds
+        asleep = self.closure_time >= self.ear_time_thresh
+        looking_away = self.not_look_ahead_time >= self.gaze_time_thresh
+        distracted = self.distracted_time >= self.pose_time_thresh
 
         return asleep, looking_away, distracted
 

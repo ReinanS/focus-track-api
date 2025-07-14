@@ -99,45 +99,30 @@ def attention_monitor(
     # compute the EAR score of the eyes
     ear = eye_detector.get_EAR(landmarks=landmarks)
     # compute the PERCLOS score and state of tiredness
-    tired, perclos_score = scorer.get_PERCLOS(t_now, fps, ear)
-    # compute the Gaze Score
-    gaze = eye_detector.get_Gaze_Score(
-        frame=gray_image, landmarks=landmarks, frame_size=frame_size
+    _, _perclos_score = scorer.get_PERCLOS(t_now, fps, ear)
+
+    # Cálculo simples de scores percentuais com base no tempo atual de cada distração
+    fatigue_score = min(
+        (scorer.closure_time / scorer.ear_time_thresh) * 100, 100
+    )
+    distraction_score = min(
+        (scorer.not_look_ahead_time / scorer.gaze_time_thresh) * 100, 100
+    )
+    pose_score = min(
+        (scorer.distracted_time / scorer.pose_time_thresh) * 100, 100
     )
 
-    # compute the head pose
-    _, roll, pitch, yaw = head_pose.get_pose(
-        frame=gray_image, landmarks=landmarks, frame_size=frame_size
+    # Score geral de atenção (quanto menor o impacto dos 3 fatores)
+    attention_score = max(
+        100 - (fatigue_score + distraction_score + pose_score) / 3, 0
     )
-
-    # evaluate the scores for EAR, GAZE and HEAD POSE
-    asleep, looking_away, distracted = scorer.eval_scores(
-        t_now=t_now,
-        ear_score=ear,
-        gaze_score=gaze,
-        head_roll=roll,
-        head_pitch=pitch,
-        head_yaw=yaw,
-    )
-
-    # print(gaze)
-
-    if looking_away:
-        print('Looking away')
-    if distracted:
-        print('Distracted')
-    if asleep:
-        print('Asleep')
-    if tired:
-        print('Tired')
 
     return {
         'landmarks': landmarks_face,
-        'direction': 'Looking Forward',
-        'drowsy': False,
-        'blink_detected': False,
-        'yawn_detected': False,
-        'iris_visibility': 0.8,
+        'perclos': round(_perclos_score),
+        'fatigue_score': round(fatigue_score, 2),
+        'distraction_score': round(distraction_score, 2),
+        'attention_score': round(attention_score, 2),
     }
 
 
