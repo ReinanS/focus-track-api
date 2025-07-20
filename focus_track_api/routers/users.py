@@ -1,16 +1,14 @@
-from http import HTTPStatus
+import uuid
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 from sqlalchemy import select
-from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from focus_track_api.database import get_session
 from focus_track_api.models import User
-from focus_track_api.schemas import (
-    FilterPage,
-    Message,
+from focus_track_api.schemas.shared import FilterPage, Message
+from focus_track_api.schemas.users import (
     UserList,
     UserPublic,
     UserSchema,
@@ -19,99 +17,88 @@ from focus_track_api.security import (
     get_current_user,
     get_password_hash,
 )
+from focus_track_api.services.users import (
+    create_user,
+    delete_user_data,
+    get_users_paginated,
+    update_user_data,
+)
 
 router = APIRouter(prefix='/users', tags=['users'])
 Session = Annotated[AsyncSession, Depends(get_session)]
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
-@router.post('/', status_code=HTTPStatus.CREATED, response_model=UserPublic)
-async def create_user(user: UserSchema, session: Session):
-    db_user = await session.scalar(
+@router.post("", status_code=status.HTTP_201_CREATED, response_model=UserPublic)
+async def create(
+    user: UserSchema,
+    session: Session,
+):
+    # Verifica se o username ou email já existem
+    existing_user = await session.scalar(
         select(User).where(
             (User.username == user.username) | (User.email == user.email)
         )
     )
 
-    if db_user:
-        if db_user.username == user.username:
+    if existing_user:
+        if existing_user.username == user.username:
             raise HTTPException(
-                status_code=HTTPStatus.CONFLICT,
-                detail='Username already exists',
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Username already exists",
             )
-        elif db_user.email == user.email:
+        elif existing_user.email == user.email:
             raise HTTPException(
-                status_code=HTTPStatus.CONFLICT,
-                detail='Email already exists',
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already exists",
             )
 
-    hashed_password = get_password_hash(user.password)
+    hashed_user_data = user.model_copy()
+    hashed_user_data.password = get_password_hash(user.password)
 
-    db_user = User(
-        email=user.email,
-        username=user.username,
-        password=hashed_password,
-    )
-
-    session.add(db_user)
-    await session.commit()
-    await session.refresh(db_user)
-
-    return db_user
+    created_user = await create_user(session=session, user_data=hashed_user_data)
+    return created_user
 
 
-@router.get('/', response_model=UserList)
+@router.get("", response_model=UserList)
 async def read_users(
-    session: Session, filter_users: Annotated[FilterPage, Query()]
+    session: Session,
+    filter_users: Annotated[FilterPage, Query()]
 ):
-    query = await session.scalars(
-        select(User).offset(filter_users.offset).limit(filter_users.limit)
+    users = await get_users_paginated(
+        session=session,
+        offset=filter_users.offset,
+        limit=filter_users.limit
     )
-
-    users = query.all()
-
-    return {'users': users}
+    return {"users": users}
 
 
 @router.put('/{user_id}', response_model=UserPublic)
 async def update_user(
-    user_id: int,
+    user_id: uuid.UUID,
     user: UserSchema,
     session: Session,
     current_user: CurrentUser,
 ):
     if current_user.id != user_id:
         raise HTTPException(
-            status_code=HTTPStatus.FORBIDDEN, detail='Not enough permissions'
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
         )
-    try:
-        current_user.username = user.username
-        current_user.password = get_password_hash(user.password)
-        current_user.email = user.email
-        await session.commit()
-        await session.refresh(current_user)
 
-        return current_user
-
-    except IntegrityError:
-        raise HTTPException(
-            status_code=HTTPStatus.CONFLICT,
-            detail='Username or Email already exists',
-        )
+    return await update_user_data(session, user_id, user)
 
 
 @router.delete('/{user_id}', response_model=Message)
 async def delete_user(
-    user_id: int,
+    user_id: uuid.UUID,
     session: Session,
     current_user: CurrentUser,
 ):
     if current_user.id != user_id:
         raise HTTPException(
-            status_code=HTTPStatus.FORBIDDEN, detail='Not enough permissions'
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not enough permissions"
         )
 
-    await session.delete(current_user)
-    await session.commit()
-
-    return {'message': 'User deleted'}
+    return await delete_user_data(session, current_user)
