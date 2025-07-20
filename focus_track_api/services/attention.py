@@ -1,10 +1,27 @@
+import traceback
+from datetime import datetime
+
 import cv2
 import mediapipe as mp
 import numpy as np
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from focus_track_api.models import StudySession, User
+from focus_track_api.schemas.attention import (
+    AttentionMetrics,
+    FaceLandmarks,
+    FrameMetrics,
+    Point2D,
+)
+from focus_track_api.schemas.session_metrics import SessionMetrics
+from focus_track_api.schemas.study_session import StudySessionCreate
 from focus_track_api.services.attention_scorer import AttentionScorer
 from focus_track_api.services.eye_detector import EyeDetector
 from focus_track_api.services.pose_estimation import HeadPoseEstimator
+from focus_track_api.services.study_session import (
+    create_study_session,
+    end_study_session,
+)
 from focus_track_api.utils.constants import (
     FACE_BOUNDARY,
     INNER_LIP,
@@ -34,7 +51,7 @@ def process_frame(data: bytes):
     nparr = np.frombuffer(data, np.uint8)
     img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    # get the frame size
+
     frame_size = img.shape[1], img.shape[0]
     gray = np.expand_dims(gray, axis=2)
     gray = np.concatenate([gray, gray, gray], axis=2)
@@ -85,167 +102,129 @@ def get_face_landmarks(face_mesh, frame: np.ndarray):
     return None
 
 
-def attention_monitor(
-    data: bytes,
-    face_mesh,
-    t_now: float,
-    fps: int,
+async def handle_frame(
+    frame_data: bytes,
+    face_mesh_instance,
     eye_detector: EyeDetector,
+    t_now: float,
+    fps: float,
     head_pose: HeadPoseEstimator,
     scorer: AttentionScorer,
+    metrics: SessionMetrics,
+    start_time: datetime
+) -> FrameMetrics | None:
+    try:
+        gray_image, frame_size = process_frame(frame_data)
+        result_face = get_face_landmarks(face_mesh_instance, gray_image)
+
+        if result_face is None:
+            return None
+
+        landmarks_face, landmarks = result_face
+
+        ear = eye_detector.get_EAR(landmarks=landmarks)
+        # tired, perclos_score = scorer.get_PERCLOS(t_now, fps, ear)
+        gaze = eye_detector.get_Gaze_Score(
+            frame=gray_image, landmarks=landmarks, frame_size=frame_size
+        )
+        _, roll, pitch, yaw = head_pose.get_pose(
+            frame=gray_image, landmarks=landmarks, frame_size=frame_size
+        )
+        fatigue_score, distraction_score, attention_score = calculate_attention_scores(scorer, fps, t_now, ear, gaze, roll, pitch, yaw)
+
+        metrics.update(fatigue_score, distraction_score, attention_score)
+
+        if start_time is not None:
+            time_on_screen = round((datetime.now() - start_time).total_seconds(), 2)
+        else:
+            time_on_screen = 0
+
+        payload = FrameMetrics(
+            landmarks=convert_landmarks(landmarks_face),
+            attention_metrics=AttentionMetrics(
+                fatigue_score=fatigue_score,
+                distraction_score=distraction_score,
+                attention_score=attention_score,
+                time_on_screen=time_on_screen
+            ),
+        )
+
+        return payload
+
+    except Exception as e:
+        print(f"Erro ao processar frame: {e}")
+        traceback.print_exc()
+
+
+def init_cv_dependencies():
+    if not cv2.useOptimized():
+        try:
+            cv2.setUseOptimized(True)
+        except Exception as ex:
+            print("OpenCV optimization could not be set to True.", ex)
+
+    return face_mesh(), EyeDetector(), HeadPoseEstimator(),
+
+
+def calculate_attention_scores(scorer: AttentionScorer, fps: float, t_now: float, ear: float, gaze: float, roll: float, pitch: float, yaw: float):
+    scorer.eval_scores(t_now, ear, gaze, roll, pitch, yaw)
+
+    fatigue_score = min((scorer.closure_time / scorer.ear_time_thresh) * 100, 100)
+    distraction_score = min((scorer.not_look_ahead_time / scorer.gaze_time_thresh) * 100, 100)
+    pose_score = min((scorer.distracted_time / scorer.pose_time_thresh) * 100, 100)
+
+    attention_score = max(100 - (fatigue_score * 0.5 + distraction_score * 0.3 + pose_score * 0.2), 0)
+
+    return fatigue_score, distraction_score, attention_score
+
+
+async def start_study_session(session: AsyncSession, user: User):
+    print("Iniciando sessão de estudo...")
+    print("Usuário:", user.__dict__)
+
+    study_session_data = StudySessionCreate(
+        user_id=user.id,
+        start_time=datetime.now(),
+    )
+
+    return await create_study_session(session, study_session_data)
+
+
+async def finalize_session(
+    session: AsyncSession,
+    user: User,
+    study_session: StudySession,
+    metrics: SessionMetrics,
+    scorer: AttentionScorer,
+    start_time: datetime
 ):
-    gray_image, frame_size = process_frame(data)
-    landmarks_face, landmarks = get_face_landmarks(face_mesh, gray_image)
-    # compute the EAR score of the eyes
-    ear = eye_detector.get_EAR(landmarks=landmarks)
-    # compute the PERCLOS score and state of tiredness
-    _, _perclos_score = scorer.get_PERCLOS(t_now, fps, ear)
+    print("Cliente desconectado.")
 
-    # Cálculo simples de scores percentuais com base no tempo atual de cada distração
-    fatigue_score = min(
-        (scorer.closure_time / scorer.ear_time_thresh) * 100, 100
-    )
-    distraction_score = min(
-        (scorer.not_look_ahead_time / scorer.gaze_time_thresh) * 100, 100
-    )
-    pose_score = min(
-        (scorer.distracted_time / scorer.pose_time_thresh) * 100, 100
-    )
+    end_time = datetime.now()
+    duration_minutes = int((end_time - start_time).total_seconds() // 60)
+    perclos = scorer.total_closed_frames / scorer.total_frames if scorer.total_frames > 0 else 0.0
 
-    # Score geral de atenção (quanto menor o impacto dos 3 fatores)
-    attention_score = max(
-        100 - (fatigue_score + distraction_score + pose_score) / 3, 0
+    summary_data = metrics.summary()
+    updated_data = StudySessionCreate(
+        user_id=user.id,
+        daily_summary_id=study_session.daily_summary_id,
+        start_time=start_time,
+        end_time=end_time,
+        duration_minutes=duration_minutes,
+        perclos=perclos,
+        **summary_data
     )
 
-    return {
-        'landmarks': landmarks_face,
-        'perclos': round(_perclos_score),
-        'fatigue_score': round(fatigue_score, 2),
-        'distraction_score': round(distraction_score, 2),
-        'attention_score': round(attention_score, 2),
-    }
+    await end_study_session(study_session.id, updated_data, session)
 
 
-# def attention_monitor(img: str):
-#   image = process_image(img)
-#   landmarks = biggest_face_landmarks(image)
+def convert_landmarks(landmarks_face: dict) -> FaceLandmarks:
+    if landmarks_face is None:
+        return None
 
-#   try:
-#     frame_size = image.shape[1], image.shape[0]
-#     print('get_eyes_landmarks')
-#     eyes_landmarks = get_eyes_landmarks(landmarks, frame_size)
-
-#     return {
-#     "scores": {
-#         "EAR": 0.85,
-#         "PERCLOS": 0.75,
-#         "Gaze": 0.90
-#     },
-#     "orientation": {
-#         "Roll": 10,
-#         "Pitch": 5,
-#         "Yaw": 0
-#     },
-#     "alert": "No alert",
-#     "facialLandmarks": {
-#         "eyes": eyes_landmarks,
-#         "mouth": [
-#             {"x": 350, "y": 300},
-#             {"x": 360, "y": 310},
-#             {"x": 370, "y": 300}
-#         ]
-#     }
-# }
-
-#   except Exception as e:
-#     print(e)
-
-
-#   # if image is not None:
-#   #     cv2.imshow("Image", image)  # "Image" é o nome da janela
-#   #     cv2.waitKey(0)  # Aguarda uma tecla para fechar a janela
-#   #     cv2.destroyAllWindows()  # Fecha a janela após a tecla ser pressionada
-#   # else:
-#   #     print("Erro: A imagem não foi processada corretamente.")
-
-
-# def process_image(img: str):
-#   base64_data = img.split(",")[1]
-#   gray_image = from_base64_to_numpy(base64_data)
-#   gray_image = cv2.flip(gray_image, 2)
-
-#   gray_image = np.expand_dims(gray_image, axis=2)
-#   gray_image = np.concatenate([gray_image, gray_image, gray_image], axis=2)
-
-#   return gray_image
-
-# def from_base64_to_numpy(img: str):
-#   # Step 1: Decode the base64 string to binary data
-#   image_data = base64.b64decode(img)
-
-#   # Step 2: Convert binary data to a numpy array
-#   # We assume the input image is in a common format like PNG or JPEG
-#   image_array = np.frombuffer(image_data, dtype=np.uint8)
-
-#   # Step 3: Decode the numpy array to get the image in BGR format
-#   image = cv2.imdecode(image_array, cv2.IMREAD_COLOR)
-
-#   # Step 4: Convert the image to grayscale
-#   gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-#   return gray_image
-
-# def biggest_face_landmarks(image):
-#   face_mesh = mp.solutions.face_mesh.FaceMesh(
-#     static_image_mode=False,
-#     min_detection_confidence=0.5,
-#     min_tracking_confidence=0.5,
-#     refine_landmarks=True,
-#   )
-
-#   lms = face_mesh.process(image).multi_face_landmarks
-
-#   if lms is not None:
-#       biggest_face = get_landmarks(lms)
-#       if biggest_face is None:
-#          raise Exception("No face detected")
-
-#       return biggest_face
-
-
-# def get_landmarks(lms):
-#     if not lms:
-#         raise Exception("Nenhum landmark detectado")
-
-#     surface = 0
-#     biggest_face = None
-#     for lms0 in lms:
-#         landmarks = [np.array([point.x, point.y, point.z]) for point in lms0.landmark]
-#         landmarks = np.array(landmarks)
-#         # Limitar valores
-#         landmarks[landmarks[:, 0] < 0.0, 0] = 0.0
-#         landmarks[landmarks[:, 0] > 1.0, 0] = 1.0
-#         landmarks[landmarks[:, 1] < 0.0, 1] = 0.0
-#         landmarks[landmarks[:, 1] > 1.0, 1] = 1.0
-
-#         dx = landmarks[:, 0].max() - landmarks[:, 0].min()
-#         dy = landmarks[:, 1].max() - landmarks[:, 1].min()
-#         new_surface = dx * dy
-#         if new_surface > surface:
-#             surface = new_surface
-#             biggest_face = landmarks
-
-#     return biggest_face
-
-
-# def get_eyes_landmarks(lms, frame_size):
-#     # Multiplica as coordenadas pelo tamanho do frame e converte para int
-#     left_iris_center = (lms[LEFT_IRIS_NUM, :2] * frame_size).astype(int).tolist()
-#     right_iris_center = (lms[RIGHT_IRIS_NUM, :2] * frame_size).astype(int).tolist()
-
-#     # Calcula as coordenadas do contorno dos olhos
-#     eyes_outline = [
-#         (lms[idx, :2] * frame_size).astype(int).tolist() for idx in EYES_LMS_NUMS
-#     ]
-
-#     return left_iris_center, right_iris_center, eyes_outline
+    return FaceLandmarks(
+        **{
+            region: [Point2D(x=point[0], y=point[1]) for point in points]
+            for region, points in landmarks_face.items()
+        }
+    )

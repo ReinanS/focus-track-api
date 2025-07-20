@@ -1,13 +1,22 @@
 import time
+from datetime import datetime
+from fastapi.params import Depends
+from typing_extensions import Annotated
 
-import cv2
-import numpy as np
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from focus_track_api.services.attention import attention_monitor, face_mesh
+from focus_track_api.database import get_session
+from focus_track_api.models import User
+from focus_track_api.schemas.session_metrics import SessionMetrics
+from focus_track_api.security import get_current_user
+from focus_track_api.services.attention import (
+    finalize_session,
+    handle_frame,
+    init_cv_dependencies,
+    start_study_session,
+)
 from focus_track_api.services.attention_scorer import AttentionScorer
-from focus_track_api.services.eye_detector import EyeDetector
-from focus_track_api.services.pose_estimation import HeadPoseEstimator
 
 router = APIRouter(
     prefix='/attention',
@@ -15,62 +24,54 @@ router = APIRouter(
     responses={404: {'description': 'Not found'}},
 )
 
-
-@router.websocket('/monitor')
-async def monitor(websocket: WebSocket):
+@router.websocket("/monitor")
+async def monitor_session(
+    websocket: WebSocket,
+):
     await websocket.accept()
+    print("WebSocket connection established")
+    token = websocket.query_params.get("token")
+    if not token:
+        await websocket.close(code=1008, reason="Token is required")
+        return
+    # user = await get_current_user(token=token)
+    # print('user', user)
+    # session = get_session()
+
+    face_mesh_instance, eye_detector, head_pose = init_cv_dependencies()
+
+    metrics = SessionMetrics()
+    scorer = AttentionScorer(t_now := time.perf_counter())
+    start_time = datetime.now()
+    prev_time = t_now
+    fps = 0.0
+    # studySession = await start_study_session(session, user)
 
     try:
-        if not cv2.useOptimized():
-            try:
-                cv2.setUseOptimized(True)  # set OpenCV optimization to True
-            except Exception as ex:
-                print(
-                    'OpenCV optimization could not be set to True, the script may be slower than expected',
-                    ex,
-                )
-
-        face_mesh_instance = face_mesh()
-        Eye_detector = EyeDetector()
-        Head_pose = HeadPoseEstimator()
-
-        # timing variables
-        prev_time = time.perf_counter()
-        fps = 0.0  # Initial FPS value
-
-        t_now = time.perf_counter()
-
-        # instantiation of the attention scorer object, with the various thresholds
-        # NOTE: set verbose to True for additional printed information about the scores
-        Scorer = AttentionScorer(t_now=t_now)
-
         while True:
-            # get current time in seconds
             t_now = time.perf_counter()
-
-            # Calculate the time taken to process the previous frame
             elapsed_time = t_now - prev_time
             prev_time = t_now
 
-            # calculate FPS
             if elapsed_time > 0:
-                fps = np.round(1 / elapsed_time, 3)
+                fps = round(1 / elapsed_time, 3)
 
             frame_data = await websocket.receive_bytes()
             if frame_data:
                 try:
-                    data = attention_monitor(
-                        frame_data,
-                        face_mesh_instance,
-                        t_now,
-                        fps,
-                        Eye_detector,
-                        Head_pose,
-                        Scorer,
+                    payload = await handle_frame(
+                        frame_data, face_mesh_instance, eye_detector, t_now, fps, head_pose, scorer, metrics, start_time
                     )
-                    await websocket.send_json(data)
+
+                    if payload:
+                        await websocket.send_json(payload.model_dump())
+
                 except Exception as e:
-                    print(f'Erro ao processar frame: {e}')
-                    await websocket.send_json({'error': str(e)})
+                    print(f"Erro ao processar frame: {e}")
+                    await websocket.send_json({"error": str(e)})
+                    raise
+
     except WebSocketDisconnect:
-        print('Cliente desconectado.')
+        print("WebSocket disconnected")
+        # await finalize_session(session, user, studySession, metrics, scorer, start_time)
+        pass

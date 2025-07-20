@@ -86,6 +86,8 @@ class AttentionScorer:
         self.not_look_ahead_time = 0
         self.distracted_time = 0
         self.eye_closure_counter = 0
+        self.total_closed_frames = 0
+        self.total_frames = 0
 
         # verbose flag
         self.verbose = False
@@ -93,6 +95,10 @@ class AttentionScorer:
     def eval_scores(
         self, t_now, ear_score, gaze_score, head_roll, head_pitch, head_yaw
     ):
+        # converte para float para evitar arrays
+        roll = float(head_roll)
+        pitch = float(head_pitch)
+        yaw = float(head_yaw)
         """
         Evaluate the driver's state of attention based on the given scores and thresholds.
 
@@ -142,9 +148,9 @@ class AttentionScorer:
             self.last_time_looked_ahead = t_now
             self.not_look_ahead_time = 0.0
 
-        if is_pose_distracted(head_roll, head_pitch, head_yaw):
+        if is_pose_distracted(roll, pitch, yaw):
             self.distracted_time = t_now - self.last_time_attended
-        elif is_pose_attentive(head_roll, head_pitch, head_yaw):
+        elif is_pose_attentive(roll, pitch, yaw):
             self.last_time_attended = t_now
             self.distracted_time = 0.0
 
@@ -205,5 +211,10 @@ class AttentionScorer:
         ):  # at every end of the given time period, reset the counter and the timer
             self.eye_closure_counter = 0
             self.prev_time = t_now
+
+        # Atualiza contadores acumulativos da sessão
+        self.total_frames += 1
+        if (ear_score is not None) and (ear_score <= self.ear_thresh):
+            self.total_closed_frames += 1
 
         return tired, perclos_score
