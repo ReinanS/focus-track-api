@@ -2,9 +2,10 @@ from datetime import datetime, timedelta
 from http import HTTPStatus
 from zoneinfo import ZoneInfo
 
-from fastapi import Depends, HTTPException
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
-from jwt import DecodeError, ExpiredSignatureError, decode, encode
+from jwt import DecodeError, ExpiredSignatureError, decode, encode, PyJWTError
+import jwt
 from pwdlib import PasswordHash
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -45,7 +46,7 @@ async def get_current_user(
     token: str = Depends(oauth2_scheme),
 ):
     credentials_exception = HTTPException(
-        status_code=HTTPStatus.UNAUTHORIZED,
+        status_code=status.HTTP_401_UNAUTHORIZED,
         detail='Could not validate credentials',
         headers={'WWW-Authenticate': 'Bearer'},
     )
@@ -54,9 +55,9 @@ async def get_current_user(
         payload = decode(
             token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
         )
-        subject_email = payload.get('sub')
+        subject_id = payload.get('sub')
 
-        if not subject_email:
+        if not subject_id:
             raise credentials_exception
 
     except DecodeError:
@@ -66,10 +67,37 @@ async def get_current_user(
         raise credentials_exception
 
     user = await session.scalar(
-        select(User).where(User.email == subject_email)
+        select(User).where(User.id == subject_id)
     )
 
     if not user:
         raise credentials_exception
 
     return user
+
+def create_refresh_token(data: dict):
+    to_encode = data.copy()
+    expire = datetime.now(tz=ZoneInfo('UTC')) + timedelta(
+        days=7
+    )
+    to_encode.update({'exp': expire})
+    encoded_jwt = encode(
+        to_encode, settings.SECRET_KEY, algorithm=settings.ALGORITHM
+    )
+    return encoded_jwt
+
+
+def decode_refresh_token(request: Request):
+    refresh_token = request.headers.get("Authorization", "").replace("Bearer ", "")
+    try:
+        payload = jwt.decode(
+            refresh_token,
+            settings.SECRET_KEY,
+            algorithms=[settings.ALGORITHM],
+        )
+        return payload['sub']
+    except PyJWTError:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail='Invalid refresh token',
+        )

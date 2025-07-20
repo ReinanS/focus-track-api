@@ -8,10 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from focus_track_api.database import get_session
 from focus_track_api.models import User
-from focus_track_api.schemas import Token
+from focus_track_api.schemas.token import Token
 from focus_track_api.security import (
     create_access_token,
-    get_current_user,
+    create_refresh_token,
+    decode_refresh_token,
     verify_password,
 )
 
@@ -19,8 +20,7 @@ router = APIRouter(prefix='/auth', tags=['auth'])
 
 OAuth2Form = Annotated[OAuth2PasswordRequestForm, Depends()]
 Session = Annotated[AsyncSession, Depends(get_session)]
-CurrentUser = Annotated[User, Depends(get_current_user)]
-
+UserId = Annotated[str, Depends(decode_refresh_token)]
 
 @router.post('/token', response_model=Token)
 async def login_for_access_token(form_data: OAuth2Form, session: Session):
@@ -40,13 +40,23 @@ async def login_for_access_token(form_data: OAuth2Form, session: Session):
             detail='Incorrect email or password',
         )
 
-    access_token = create_access_token(data={'sub': user.email})
+    access_token = create_access_token(data={'sub': str(user.id)})
+    refresh_token = create_refresh_token(data={'sub': str(user.id)})
 
-    return {'access_token': access_token, 'token_type': 'bearer'}
+    return Token(
+        access_token=access_token,
+        refresh_token=refresh_token,
+        token_type='bearer'
+    )
 
 
-@router.post('/refresh_token', response_model=Token)
-async def refresh_access_token(user: CurrentUser):
-    new_access_token = create_access_token(data={'sub': user.email})
+@router.post('/refresh', response_model=Token)
+async def refresh_access_token(user_id: UserId):
+    new_access_token = create_access_token(data={'sub': str(user_id)})
+    refresh_token = create_refresh_token(data={'sub': str(user_id)})
 
-    return {'access_token': new_access_token, 'token_type': 'bearer'}
+    return Token(
+        access_token=new_access_token,
+        refresh_token=refresh_token,
+        token_type='bearer'
+    )
