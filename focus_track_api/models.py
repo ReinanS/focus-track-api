@@ -2,6 +2,7 @@ import uuid
 from datetime import date as dt
 from datetime import datetime
 from typing import List
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import ForeignKey, func
 from sqlalchemy.dialects.postgresql import UUID
@@ -47,6 +48,7 @@ class UserSettings:
     distraction_threshold: Mapped[int] = mapped_column(default=50)
     updated_at: Mapped[datetime] = mapped_column(init=False, server_default=func.now(), onupdate=func.now())
 
+
 @table_registry.mapped_as_dataclass
 class DailySummary:
     __tablename__ = "daily_summaries"
@@ -72,7 +74,7 @@ class StudySession:
     user: Mapped["User"] = relationship(back_populates="sessions", init=False)
     daily_summary: Mapped["DailySummary"] = relationship(back_populates="sessions", init=False)
     start_time: Mapped[datetime] = mapped_column(
-        default=datetime.now(),
+        default=datetime.now(tz=ZoneInfo('UTC')),
         server_default=func.now(),
         nullable=False
     )
@@ -81,7 +83,6 @@ class StudySession:
         onupdate=func.now(),
         nullable=True
     )
-    duration_minutes: Mapped[int] = mapped_column(default=0)
     average_attention_score: Mapped[float] = mapped_column(default=0.0)
     average_fatigue: Mapped[float] = mapped_column(default=0.0)
     average_distraction: Mapped[float] = mapped_column(default=0.0)

@@ -1,5 +1,6 @@
 import traceback
-from datetime import datetime
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import cv2
 import mediapipe as mp
@@ -135,7 +136,7 @@ async def handle_frame(
         metrics.update(fatigue_score, distraction_score, attention_score)
 
         if start_time is not None:
-            time_on_screen = round((datetime.now() - start_time).total_seconds(), 2)
+            time_on_screen = round((datetime.now(timezone.utc) - start_time).total_seconds(), 2)
         else:
             time_on_screen = 0
 
@@ -179,12 +180,9 @@ def calculate_attention_scores(scorer: AttentionScorer, fps: float, t_now: float
 
 
 async def start_study_session(session: AsyncSession, user: User):
-    print("Iniciando sessão de estudo...")
-    print("Usuário:", user.__dict__)
-
     study_session_data = StudySessionCreate(
         user_id=user.id,
-        start_time=datetime.now(),
+        start_time=datetime.now(tz=ZoneInfo('UTC')),
     )
 
     return await create_study_session(session, study_session_data)
@@ -200,8 +198,7 @@ async def finalize_session(
 ):
     print("Cliente desconectado.")
 
-    end_time = datetime.now()
-    duration_minutes = int((end_time - start_time).total_seconds() // 60)
+    end_time = datetime.now(tz=ZoneInfo('UTC'))
     perclos = scorer.total_closed_frames / scorer.total_frames if scorer.total_frames > 0 else 0.0
 
     summary_data = metrics.summary()
@@ -210,7 +207,6 @@ async def finalize_session(
         daily_summary_id=study_session.daily_summary_id,
         start_time=start_time,
         end_time=end_time,
-        duration_minutes=duration_minutes,
         perclos=perclos,
         **summary_data
     )

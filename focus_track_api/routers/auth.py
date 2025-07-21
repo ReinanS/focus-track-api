@@ -22,6 +22,7 @@ OAuth2Form = Annotated[OAuth2PasswordRequestForm, Depends()]
 Session = Annotated[AsyncSession, Depends(get_session)]
 UserId = Annotated[str, Depends(decode_refresh_token)]
 
+
 @router.post('/token', response_model=Token)
 async def login_for_access_token(form_data: OAuth2Form, session: Session):
     user = await session.scalar(

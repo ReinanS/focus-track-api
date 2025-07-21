@@ -1,5 +1,4 @@
 from collections import defaultdict
-from uuid import UUID
 
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -29,33 +28,6 @@ async def get_or_create_daily_summary(
     await session.refresh(new_summary)
 
     return new_summary
-
-
-async def update_daily_summary_metrics(
-    daily_summary_id: UUID,
-    session: AsyncSession,
-):
-    stmt = select(StudySession).where(StudySession.daily_summary_id == daily_summary_id)
-    result = await session.execute(stmt)
-    sessions = result.scalars().all()
-
-    if not sessions:
-        return
-
-    avg_fatigue = sum(s.average_fatigue for s in sessions) / len(sessions)
-    avg_distraction = sum(s.average_distraction for s in sessions) / len(sessions)
-    total_focused_minutes = sum(s.duration_minutes for s in sessions)
-
-    stmt_summary = select(DailySummary).where(DailySummary.id == daily_summary_id)
-    summary = await session.scalar(stmt_summary)
-
-    if summary:
-        summary.avg_fatigue = round(avg_fatigue, 2)
-        summary.avg_distraction = round(avg_distraction, 2)
-        summary.focused_time_minutes = total_focused_minutes
-
-        await session.commit()
-        await session.refresh(summary)
 
 
 async def get_daily_and_session_data(

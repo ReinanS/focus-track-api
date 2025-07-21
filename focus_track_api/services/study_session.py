@@ -1,5 +1,6 @@
-from datetime import date as dt
+from datetime import datetime
 from uuid import UUID
+from zoneinfo import ZoneInfo
 
 from sqlalchemy import select
 from sqlalchemy.exc import SQLAlchemyError
@@ -19,7 +20,7 @@ async def create_study_session(
         session=session,
         summary_data=DailySummaryCreate(
             user_id=session_data.user_id,
-            date=dt.today()
+            date=datetime.now(tz=ZoneInfo('UTC')).date(),
         ),
     )
 
@@ -48,7 +49,6 @@ async def end_study_session(
         raise ValueError(f"StudySession with id {study_session_id} not found.")
 
     # Atualiza os campos finais
-    db_session.duration_minutes = update_data.duration_minutes
     db_session.average_attention_score = update_data.average_attention_score
     db_session.average_fatigue = update_data.average_fatigue
     db_session.average_distraction = update_data.average_distraction

@@ -1,11 +1,10 @@
 from datetime import datetime, timedelta
-from http import HTTPStatus
 from zoneinfo import ZoneInfo
 
+import jwt
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
-from jwt import DecodeError, ExpiredSignatureError, decode, encode, PyJWTError
-import jwt
+from jwt import DecodeError, ExpiredSignatureError, PyJWTError, decode, encode
 from pwdlib import PasswordHash
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -41,6 +40,25 @@ def verify_password(plain_password: str, hashed_password: str):
     return pwd_context.verify(plain_password, hashed_password)
 
 
+async def get_current_user_socket(session: AsyncSession, token: str) -> User | None:
+    payload = decode(
+        token, settings.SECRET_KEY, algorithms=[settings.ALGORITHM]
+    )
+    subject_id = payload.get('sub')
+
+    if not subject_id:
+        return None
+
+    user = await session.scalar(
+        select(User).where(User.id == subject_id)
+    )
+
+    if not user:
+        return None
+
+    return user
+
+
 async def get_current_user(
     session: AsyncSession = Depends(get_session),
     token: str = Depends(oauth2_scheme),
@@ -74,6 +92,7 @@ async def get_current_user(
         raise credentials_exception
 
     return user
+
 
 def create_refresh_token(data: dict):
     to_encode = data.copy()

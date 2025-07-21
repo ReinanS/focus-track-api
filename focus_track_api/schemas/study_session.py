@@ -11,7 +11,6 @@ class StudySessionPublic(BaseModel):
     daily_summary_id: UUID
     start_time: datetime
     end_time: datetime
-    duration_minutes: int
     average_attention_score: float
     average_fatigue: float
     average_distraction: float
@@ -27,7 +26,6 @@ class StudySessionPublic(BaseModel):
 class StudySessionCreate(BaseModel):
     user_id: UUID = None
     daily_summary_id: UUID = None
-    duration_minutes: int = 0
     average_attention_score: float = 0.0
     average_fatigue: float = 0.0
     average_distraction: float = 0.0
@@ -43,7 +41,6 @@ class StudySessionSchema(BaseModel):
     daily_summary_id: UUID
     start_time: datetime
     end_time: Optional[datetime] = None
-    duration_minutes: int
     average_attention_score: float
     average_fatigue: float
     average_distraction: float
