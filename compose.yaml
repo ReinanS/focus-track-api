@@ -1,0 +1,30 @@
+services:
+  focus_track_database:
+    image: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: app_user
+      POSTGRES_DB: app_db
+      POSTGRES_PASSWORD: app_password
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env
+
+  focus_track_app:
+    image: focus_track_app
+    entrypoint: ./entrypoint.sh
+    platform: linux/amd64
+    volumes:
+      - .:/app
+    build: .
+    ports:
+      - "8000:8000"
+    depends_on:
+      - focus_track_database
+    env_file:
+      - .env
+
+volumes:
+  pgdata:

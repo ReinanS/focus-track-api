@@ -1,0 +1,77 @@
+[project]
+name = "focus-track-api"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Reinan", email = "reinandesouza01@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.11,<4.0"
+dependencies = [
+    "alembic (>=1.16.2,<2.0.0)",
+    "fastapi[standard] (>=0.115.14,<0.116.0)",
+    "pwdlib[argon2] (>=0.2.1,<0.3.0)",
+    "pydantic-settings (>=2.10.1,<3.0.0)",
+    "pyjwt (>=2.10.1,<3.0.0)",
+    "aiosqlite (>=0.21.0,<0.22.0)",
+    "sqlalchemy[asyncio] (>=2.0.41,<3.0.0)",
+    "psycopg[binary] (>=3.2.9,<4.0.0)",
+    "tzdata (>=2025.2,<2026.0)",
+    "opencv-python-headless (==4.9.0.80)",
+    "mediapipe (==0.10.21)"
+]
+
+[tool.poetry.group.dev.dependencies]
+pytest = "^8.4.1"
+pytest-cov = "^6.2.1"
+taskipy = "^1.14.1"
+ruff = "^0.12.1"
+httpx = "^0.28.1"
+pytest-asyncio = "^1.0.0"
+factory-boy = "^3.3.3"
+freezegun = "^1.5.2"
+testcontainers = "^4.10.0"
+debugpy = "^1.8.15"
+
+[tool.ruff]
+line-length = 79
+extend-exclude = ['migrations']
+
+[tool.ruff.lint]
+preview = true
+select = ['I', 'F', 'E', 'W', 'PL', 'PT', 'FAST']
+ignore = ["E501", "D103", 'PLR0913', "PLR0917", 'PLR0914']
+exclude = [
+    'migrations',
+    '**/face_geometry.py',
+    '**/eye_detector.py',
+    '**/pose_estimation.py'
+]
+
+[tool.ruff.format]
+preview = true
+quote-style = 'single'
+
+[tool.pytest.ini_options]
+pythonpath = "."
+addopts = '-p no:warnings'
+asyncio_default_fixture_loop_scope = 'function'
+
+[tool.coverage.run]
+concurrency = ["thread", "greenlet"]
+
+[tool.taskipy.tasks]
+lint = 'ruff check'
+lint_all = 'ruff check .'
+lint_app = 'ruff check focus_track_api/'
+lint_tests = 'ruff check tests/'
+pre_format = 'ruff check --fix'
+format = 'ruff format'
+run = 'fastapi dev focus_track_api/app.py'
+pre_test = 'task lint'
+test = 'pytest -s -x --cov=focus_track_api -vv'
+post_test = 'coverage html'
+
+[build-system]
+requires = ["poetry-core>=2.0.0,<3.0.0"]
+build-backend = "poetry.core.masonry.api"

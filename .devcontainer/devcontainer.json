@@ -1,0 +1,14 @@
+{
+  "name": "FocusTrack Container Dev",
+  "dockerComposeFile": "../compose.yaml",
+  "service": "focus_track_app",
+  "workspaceFolder": "/app",
+  "settings": {
+    "terminal.integrated.defaultProfile.linux": "bash"
+  },
+  "extensions": [
+    "ms-python.python",
+    "ms-python.debugpy"
+  ],
+  "remoteUser": "root"
+}

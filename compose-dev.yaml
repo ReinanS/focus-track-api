@@ -1,0 +1,36 @@
+services:
+  focus_track_database:
+    image: postgres
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: app_user
+      POSTGRES_DB: app_db
+      POSTGRES_PASSWORD: app_password
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env
+
+  focus_track_app:
+    image: focus_track_app_dev
+    entrypoint: ./entrypoint-dev.sh
+    platform: linux/amd64
+    volumes:
+      - .:/app
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    ports:
+      - "8000:8000"
+      - "5678:5678"
+    depends_on:
+      - focus_track_database
+    env_file:
+      - .env
+    environment:
+      - PYTHONPATH=/app
+      - PYTHONDONTWRITEBYTECODE=1
+
+volumes:
+  pgdata:
